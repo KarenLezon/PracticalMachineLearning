@@ -1,0 +1,90 @@
+---
+title: Predicting Class from variables
+output: html_document
+---
+## Introduction
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. The goal of this project is to use data from accelerometers on the belt, forearm, arm, and dumbbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. Code has been developed to predict, based on the collected data what barbell lift was used.
+
+## Data
+
+The data comes from the following study: Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013
+
+Six participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E). 
+
+The data consists of 160 variables, some of which are from the accelerometers, and 'classe' which tells us which type of lift was used. The training set provided has 19,622 observations. A provided test set of 20 observations do not have the class identified and will be used for the final test.  
+
+Can the values from the accelerometers predict the class of lifting?
+
+# Load and process training and testing data
+```{r libraries, echo=FALSE}
+library(AppliedPredictiveModeling)
+library(caret)
+library(rpart)
+library(randomForest)
+```
+The data has been downloaded from the website.
+```{r Initial Load, cache=TRUE}
+pmltrain <-read.csv("pml-training.csv",na.strings=c("", "NA", "NULL"))
+pml20test <-read.csv("pml-testing.csv",na.strings=c("", "NA", "NULL"))
+dim(pmltrain)
+dim(pml20test)
+```
+Let's make sure we are only using variables that are useful. First, get rid of columns that are mostly NAs. Then the irrelevant variables like line number, datestamps and names.
+```{r reducing dataset}
+# keep columns with no NAs
+pmltrain <- pmltrain[ , colSums(is.na(pmltrain)) == 0]
+pml20test <- pml20test[ , colSums(is.na(pml20test)) == 0]
+#Remove irrelevant variables 
+irrelevant = c('X', 'user_name', 'raw_timestamp_part_1', 'raw_timestamp_part_2',
+           'cvtd_timestamp', 'new_window', 'num_window')
+pmltrain <- pmltrain[, -which(names(pmltrain) %in% irrelevant)]
+pml20test <- pml20test[, -which(names(pml20test) %in% irrelevant)]
+
+dim(pmltrain)
+dim(pml20test)
+```
+Take a quick look at the variance in the classe variable.
+```{r plot }
+plot(pmltrain$classe)
+```
+Looks relatively even. Check the other variables for low variance.
+```{r find low variance varibles}
+nsvvalues <- nearZeroVar(pmltrain, saveMetrics=TRUE)
+sum(nsvvalues[,"nzv"])
+```
+No Low variance variables.
+
+#Dividing up the Data for Cross Validation
+To validate the training algorithm, divide the training set into a training set and validation set.
+```{r validation set}
+set.seed(1010)
+inTrain <- createDataPartition(pmltrain$classe, p=.65, list=FALSE)
+trainset <- pmltrain[inTrain,]
+valset <- pmltrain[-inTrain,]
+dim(trainset)
+dim(valset)
+
+```
+
+##Random Forests
+I decided to use the Random Forest algorithm since it is popular for it's accuracy. With this using the k-fold cross validation with K=4 to see how it does. 
+```{r model, cache=TRUE}
+set.seed(1010)
+RFModel <- train(trainset$classe ~ ., method="rf", 
+                 trControl=trainControl(method = "cv", number = 4), data=trainset)
+```
+
+```{r show results}
+print(RFModel, digits=3)
+
+predictions <- predict(RFModel, newdata=valset)
+print(confusionMatrix(predictions, valset$classe), digits=3)
+```
+## Results  
+This model has an accuracy of 99.3%. The Out of Sample error rate is (1-.993) which is .007. Since the error rate is so low for the Validation set, let's do our prediction for the test set.
+```{r applying test}
+testanswers<-predict(RFModel, newdata=pml20test)
+testanswers
+```
+These answers are 100% correct.  It seems the data from the accelerometers can predict with high accuracy the class of weight lifting.
+
